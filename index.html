@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Control de Almacén</title>
+<style>
+  :root{
+    --ink:#1c2420; --ink-soft:#57635b; --paper:#eef1ee; --surface:#ffffff; --surface-2:#e4e9e3;
+    --line:#d5ddd3; --accent:#2f6f5c; --accent-strong:#1d4a3d; --accent-soft:#dcece5;
+    --warn:#a8681b; --warn-soft:#f6e6cd; --danger:#a5382d; --danger-soft:#f5dcd8;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ink:#e7ece7; --ink-soft:#a2ada4; --paper:#12160f; --surface:#191f1a; --surface-2:#212822;
+      --line:#2b332c; --accent:#4fa98a; --accent-strong:#84d0b2; --accent-soft:#1c332b;
+      --warn:#dfa24c; --warn-soft:#3a2c17; --danger:#e07468; --danger-soft:#3a201c;
+    }
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--paper); color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; -webkit-font-smoothing:antialiased; }
+  #app{ max-width:640px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column; padding-bottom:76px; }
+  header.top{ position:sticky; top:0; z-index:20; background:var(--paper); padding:14px 16px 10px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  header.top h1{ font-size:19px; margin:0; }
+  header.top .sub{ font-size:11.5px; color:var(--ink-soft); }
+  .status-bar{ padding:8px 16px; font-size:12px; color:var(--ink-soft); display:flex; align-items:center; gap:8px; }
+  .status-dot{ width:8px; height:8px; border-radius:99px; background:var(--warn); flex:none; }
+  .status-dot.ok{ background:var(--accent); }
+  main{ flex:1; padding:0 16px 20px; }
+  .view{ display:none; padding-top:14px; } .view.active{ display:block; }
+  .card{ background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:10px; }
+  input, select{ font-size:15px; padding:9px 11px; border-radius:10px; border:1px solid var(--line); background:var(--surface); color:var(--ink); width:100%; }
+  label{ font-size:12px; color:var(--ink-soft); display:block; margin-bottom:4px; }
+  button{ font-family:inherit; font-size:13.5px; font-weight:600; padding:10px 14px; border-radius:10px; border:1px solid var(--line); background:var(--surface); color:var(--ink); cursor:pointer; }
+  button.primary{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.danger{ background:var(--danger); border-color:var(--danger); color:#fff; }
+  button.ghost{ background:transparent; }
+  button.block{ width:100%; }
+  button.active{ background:var(--accent-soft); border-color:var(--accent); color:var(--accent-strong); }
+  .row{ display:flex; gap:8px; flex-wrap:wrap; }
+  .row button, .row input{ flex:1; min-width:110px; }
+  nav.tabs{ position:fixed; bottom:0; left:0; right:0; background:var(--surface); border-top:1px solid var(--line); display:flex; z-index:30; max-width:640px; margin:0 auto; }
+  nav.tabs button{ flex:1; border:none; border-radius:0; background:none; padding:10px 4px 12px; font-size:11px; display:flex; flex-direction:column; align-items:center; gap:3px; color:var(--ink-soft); }
+  nav.tabs button.active{ color:var(--accent-strong); }
+  nav.tabs .ic{ font-size:18px; }
+  .item-row{ display:flex; align-items:center; gap:10px; padding:11px 4px; border-bottom:1px solid var(--line); }
+  .item-row:last-child{ border-bottom:none; }
+  .item-row .name{ font-weight:600; font-size:14px; }
+  .item-row .meta{ font-size:11.5px; color:var(--ink-soft); font-family:ui-monospace,monospace; }
+  .item-row .qty{ font-family:ui-monospace,monospace; font-weight:700; font-size:16px; margin-left:auto; }
+  .qty.low{ color:var(--danger); }
+  .chip{ font-size:10.5px; font-weight:700; padding:3px 8px; border-radius:99px; text-transform:uppercase; }
+  .chip.in{ background:var(--accent-soft); color:var(--accent-strong); }
+  .chip.out{ background:var(--danger-soft); color:var(--danger); }
+  .toast{ position:fixed; bottom:88px; left:50%; transform:translateX(-50%) translateY(10px); background:var(--ink); color:var(--paper); padding:10px 16px; border-radius:99px; font-size:13px; opacity:0; pointer-events:none; transition:.2s; z-index:100; max-width:90%; text-align:center; }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+  .cam-box{ position:relative; border-radius:14px; overflow:hidden; background:#0d100d; aspect-ratio:4/3; margin-bottom:10px; display:none; }
+  .cam-box.active{ display:block; }
+  #camRegion, #labelCamRegion{ width:100%; height:100%; } #camRegion video, #labelCamRegion video{ width:100%!important; height:100%!important; object-fit:cover; }
+  .cam-frame{ position:absolute; inset:14%; border:2px solid var(--accent); border-radius:12px; box-shadow:0 0 0 999px rgba(0,0,0,.35); pointer-events:none; }
+  .label-sheet{ display:grid; gap:3mm; }
+  .label-sheet.cols-2{ grid-template-columns:repeat(2,1fr); }
+  .label-sheet.cols-3{ grid-template-columns:repeat(3,1fr); }
+  .label-sheet.cols-4{ grid-template-columns:repeat(4,1fr); }
+  .label-cell{ border:1px dashed var(--line); border-radius:2mm; padding:2.5mm 3mm; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; min-height:26mm; background:var(--surface); overflow:hidden; }
+  .label-cell.empty{ opacity:.35; }
+  .label-cell .nm{ font-weight:700; font-size:9.5pt; line-height:1.15; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .label-cell .loc{ font-size:8pt; color:var(--ink-soft); margin-top:1mm; }
+  .label-cell svg{ width:100%; max-width:44mm; height:auto; margin:1.5mm 0; }
+  .label-cell .sk{ font-family:ui-monospace,monospace; font-size:8pt; letter-spacing:.04em; }
+  .pick-list{ max-height:34vh; overflow-y:auto; border:1px solid var(--line); border-radius:12px; margin-bottom:10px; background:var(--surface); }
+  .pick-row{ display:flex; align-items:center; gap:10px; padding:9px 12px; border-bottom:1px solid var(--line); font-size:13.5px; cursor:pointer; }
+  .pick-row:last-child{ border-bottom:none; }
+  .pick-row .meta{ margin-left:auto; color:var(--ink-soft); font-size:11.5px; font-family:ui-monospace,monospace; }
+  .msg{ font-size:12.5px; padding:9px 11px; border-radius:10px; margin-bottom:10px; display:none; }
+  .msg.show{ display:block; }
+  .msg.warn{ background:var(--warn-soft); color:var(--warn); }
+  .msg.ok{ background:var(--accent-soft); color:var(--accent-strong); }
+  @media print{
+    body *{ visibility:hidden !important; }
+    #labelPrintGrid, #labelPrintGrid *{ visibility:visible !important; }
+    #labelPrintGrid{ position:absolute; left:0; top:0; width:100%; }
+    @page{ margin:10mm; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <div><h1>📦 Control de Almacén</h1><div class="sub">Nube propia (Supabase) · sin inicio de sesión</div></div>
+  </header>
+  <div class="status-bar"><span class="status-dot" id="connDot"></span><span id="statusText">Conectando…</span></div>
+ 
+  <main>
+    <section class="view active" id="view-scan">
+      <div class="card">
+        <label for="scanInput">Escanear o introducir código (SKU)</label>
+        <input id="scanInput" autocomplete="off" placeholder="SKU / código de barras">
+      </div>
+      <div class="row" style="margin-bottom:10px;">
+        <button id="btnToggleCam">📷 Activar cámara</button>
+        <button id="btnNewBlank">＋ Nuevo producto</button>
+      </div>
+      <div class="cam-box" id="camBox">
+        <div id="camRegion"></div><div class="cam-frame"></div>
+        <button id="btnCloseCam" style="position:absolute; top:8px; right:8px;">Cerrar ✕</button>
+      </div>
+      <div id="scanResult"></div>
+    </section>
+ 
+    <section class="view" id="view-inventory">
+      <div class="card"><input id="invSearch" placeholder="Buscar por nombre, SKU o ubicación…"></div>
+      <div id="invList"></div>
+    </section>
+ 
+    <section class="view" id="view-history">
+      <div id="histList"></div>
+    </section>
+ 
+    <section class="view" id="view-labels">
+      <div class="msg ok show" style="margin-bottom:12px;">Genera e imprime etiquetas con código de barras — todo en vivo desde tu inventario real.</div>
+      <div class="card"><input id="labelSearch" placeholder="Buscar por nombre, SKU o ubicación…"></div>
+      <div class="row" style="margin-bottom:8px;">
+        <button id="btnToggleLabelCam">📷 Activar cámara para añadir</button>
+      </div>
+      <div class="cam-box" id="labelCamBox">
+        <div id="labelCamRegion"></div><div class="cam-frame"></div>
+        <button id="btnCloseLabelCam" style="position:absolute; top:8px; right:8px;">Cerrar ✕</button>
+      </div>
+      <div class="row" style="margin-bottom:8px;">
+        <button id="btnLabelSelAll">Marcar visibles</button>
+        <button class="primary" id="btnLabelSelEverything">Todo el almacén</button>
+        <button id="btnLabelSelNone">Ninguno</button>
+      </div>
+      <div class="pick-list" id="labelPickList"></div>
+      <div class="card">
+        <label for="labelQty">Copias por artículo</label><input type="number" id="labelQty" min="1" max="50" value="1">
+      </div>
+      <div class="card">
+        <label for="labelSlots">Huecos en la hoja</label><input type="number" id="labelSlots" min="1" max="200" value="9">
+      </div>
+      <div class="row" style="margin-bottom:8px;">
+        <button id="btnSizeSm">Pequeña (4/fila)</button>
+        <button id="btnSizeMd" class="active">Mediana (3/fila)</button>
+        <button id="btnSizeLg">Grande (2/fila)</button>
+      </div>
+      <div class="row" style="margin-bottom:8px;">
+        <button class="primary" id="btnPrintLabels">🖨️ Imprimir</button>
+      </div>
+      <div class="msg" id="labelMsg"></div>
+      <div id="labelPrintGrid"></div>
+    </section>
+  </main>
+ 
+  <nav class="tabs">
+    <button class="active" data-view="scan"><span class="ic">🔍</span>Escanear</button>
+    <button data-view="inventory"><span class="ic">📦</span>Inventario</button>
+    <button data-view="history"><span class="ic">🕘</span>Historial</button>
+    <button data-view="labels"><span class="ic">🏷️</span>Etiquetas</button>
+  </nav>
+  <div class="toast" id="toast"></div>
+</div>
+ 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script>
+  var SUPABASE_URL = "https://fufgfmyqfgacrhzjhfqa.supabase.co";
+  var SUPABASE_KEY = "sb_publishable_ApiIiJ86rQ58_LRkh19mnw_atyWXMSu";
+  var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+ 
+  var $ = function(id){ return document.getElementById(id); };
+  var esc = function(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
+  var toast = function(msg){ var t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toast._h); toast._h=setTimeout(function(){ t.classList.remove('show'); },2400); };
+ 
+  var items = [];       // {id, sku, name, category, unit, qty, min_qty}
+  var itemsBySku = {};
+  var moves = [];
+  var currentView = 'scan';
+ 
+  function mergeIndex(){
+    itemsBySku = {};
+    items.forEach(function(it){ if(it.sku) itemsBySku[String(it.sku).toLowerCase()] = it; });
+    items.sort(function(a,b){ return (a.name||'').localeCompare(b.name||'', 'es'); });
+  }
+ 
+  function setStatus(ok, text){
+    $('connDot').classList.toggle('ok', ok);
+    $('statusText').textContent = text;
+  }
+ 
+  async function loadAll(){
+    var r1 = await sb.from('items').select('*');
+    if(r1.error){ setStatus(false, 'Error cargando inventario: ' + r1.error.message); return; }
+    items = r1.data || [];
+    mergeIndex();
+    setStatus(true, 'Conectado · ' + items.length + ' artículos');
+    renderCurrentView();
+ 
+    var r2 = await sb.from('movements').select('*').order('at', { ascending:false }).limit(80);
+    if(!r2.error){ moves = r2.data || []; if(currentView==='history') renderHistory(); }
+  }
+ 
+  sb.channel('items-rt').on('postgres_changes', { event:'*', schema:'public', table:'items' }, function(){ loadAll(); }).subscribe();
+  sb.channel('moves-rt').on('postgres_changes', { event:'*', schema:'public', table:'movements' }, function(){
+    sb.from('movements').select('*').order('at',{ascending:false}).limit(80).then(function(r){ if(!r.error){ moves=r.data||[]; if(currentView==='history') renderHistory(); } });
+  }).subscribe();
+ 
+  loadAll();
+ 
+  // ---------- navigation ----------
+  document.querySelectorAll('nav.tabs button').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var v = btn.getAttribute('data-view');
+      document.querySelectorAll('nav.tabs button').forEach(function(b){ b.classList.remove('active'); });
+      btn.classList.add('active');
+      document.querySelectorAll('.view').forEach(function(s){ s.classList.remove('active'); });
+      $('view-'+v).classList.add('active');
+      currentView = v;
+      if(v !== 'scan' && camOn) stopCam();
+      if(v !== 'labels' && labelCamOn) stopLabelCam();
+      renderCurrentView();
+    });
+  });
+  function renderCurrentView(){
+    if(currentView==='inventory') renderInventory();
+    if(currentView==='history') renderHistory();
+    if(currentView==='labels'){ autoSelectAllLabelsIfNeeded(); renderLabelsView(); ensureLabelsReady(); }
+  }
+ 
+  // ---------- scan ----------
+  var scanInput = $('scanInput');
+  scanInput.addEventListener('keydown', function(e){
+    if(e.key==='Enter'){ e.preventDefault(); var code=scanInput.value.trim(); if(code){ showScanResult(code); scanInput.value=''; } }
+  });
+  function showScanResult(code){
+    var it = itemsBySku[String(code).toLowerCase()];
+    var el = $('scanResult');
+    if(it){
+      var low = Number(it.qty) <= Number(it.min_qty||0);
+      el.innerHTML = '<div class="card">' +
+        '<div style="display:flex; justify-content:space-between; align-items:baseline;"><div><div class="name" style="font-size:16px;">'+esc(it.name)+'</div><div class="meta">'+esc(it.sku)+'</div></div>' +
+        '<div class="qty'+(low?' low':'')+'" style="font-size:20px;">'+Number(it.qty||0)+'</div></div>' +
+        '<div style="font-size:12px; color:var(--ink-soft); margin:4px 0 10px;">'+esc(it.unit||'cajas')+' · Ubicación: '+esc(it.category||'—')+'</div>' +
+        '<div class="row"><input type="number" id="scanDelta" value="1" min="1" style="flex:0 0 80px;"><button class="primary" id="scanIn">↓ Entrada</button><button class="danger" id="scanOut">↑ Salida</button></div>' +
+        '</div>';
+      $('scanIn').onclick = function(){ recordMove(it, 'in', parseInt($('scanDelta').value,10)||1); };
+      $('scanOut').onclick = function(){ recordMove(it, 'out', parseInt($('scanDelta').value,10)||1); };
+    } else {
+      el.innerHTML = '<div class="card" style="text-align:center;">🔍 Sin artículo con el código<br><span class="meta">'+esc(code)+'</span><br><button class="primary" id="scanCreate" style="margin-top:10px;">＋ Dar de alta este producto</button></div>';
+      $('scanCreate').onclick = function(){ openNewItem(code); };
+    }
+  }
+  async function recordMove(it, type, qty){
+    qty = Math.abs(Number(qty)||1);
+    var delta = type==='in' ? qty : -qty;
+    var newQty = Math.max(0, Number(it.qty||0) + delta);
+    var r1 = await sb.from('items').update({ qty:newQty, updated_at:new Date().toISOString() }).eq('id', it.id);
+    if(r1.error){ toast('Error: ' + r1.error.message); return; }
+    await sb.from('movements').insert({ item_id:it.id, sku:it.sku, name:it.name, type:type, qty:qty, at:new Date().toISOString() });
+    toast((type==='in'?'＋':'－') + qty + ' — ' + it.name);
+    showScanResult(it.sku);
+  }
+ 
+  $('btnNewBlank').addEventListener('click', function(){ openNewItem(''); });
+  function openNewItem(prefillSku){
+    var name = prompt('Nombre del artículo nuevo:');
+    if(!name) return;
+    var category = prompt('Ubicación (ej: A, M, O):', 'GEN') || 'GEN';
+    var qty = parseFloat(prompt('Cantidad inicial:', '0')) || 0;
+    createItem(name.trim(), category.trim(), qty);
+  }
+  async function createItem(name, category, qty){
+    var cat = (category||'GEN').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6) || 'GEN';
+    var r = await sb.from('counters').select('*').eq('category', cat).maybeSingle();
+    var next = (r.data && r.data.next_num) || 1;
+    var sku = cat + '-' + String(next).padStart(3,'0');
+    await sb.from('counters').upsert({ category:cat, next_num: next+1 });
+    var ins = await sb.from('items').insert({ sku:sku, name:name, category:category, unit:'cajas', qty:qty, min_qty:0, created_by:'app' }).select().single();
+    if(ins.error){ toast('Error creando artículo: ' + ins.error.message); return; }
+    if(qty>0){ await sb.from('movements').insert({ item_id:ins.data.id, sku:sku, name:name, type:'in', qty:qty, note:'Alta inicial', at:new Date().toISOString() }); }
+    toast('Creado: ' + name + ' (' + sku + ')');
+  }
+ 
+  // ---------- inventory ----------
+  $('invSearch').addEventListener('input', renderInventory);
+  function renderInventory(){
+    var q = ($('invSearch').value||'').trim().toLowerCase();
+    var list = items.filter(function(it){
+      if(!q) return true;
+      return (it.name||'').toLowerCase().indexOf(q)>-1 || (it.sku||'').toLowerCase().indexOf(q)>-1 || (it.category||'').toLowerCase().indexOf(q)>-1;
+    });
+    $('invList').innerHTML = '<div class="card" style="padding:4px 14px;">' + list.map(function(it){
+      var low = Number(it.qty) <= Number(it.min_qty||0);
+      return '<div class="item-row"><div><div class="name">'+esc(it.name)+'</div><div class="meta">'+esc(it.sku)+' · '+esc(it.category||'—')+'</div></div><div class="qty'+(low?' low':'')+'">'+Number(it.qty||0)+'</div></div>';
+    }).join('') + '</div>' || '';
+    if(!list.length) $('invList').innerHTML = '<div class="card" style="text-align:center; color:var(--ink-soft);">Sin resultados</div>';
+  }
+ 
+  // ---------- history ----------
+  function renderHistory(){
+    if(!moves.length){ $('histList').innerHTML = '<div class="card" style="text-align:center; color:var(--ink-soft);">Sin movimientos todavía</div>'; return; }
+    $('histList').innerHTML = '<div class="card" style="padding:4px 14px;">' + moves.map(function(m){
+      var d = new Date(m.at); var when = d.toLocaleDateString('es-ES') + ' ' + d.toLocaleTimeString('es-ES', {hour:'2-digit',minute:'2-digit'});
+      return '<div class="item-row"><span class="chip '+esc(m.type)+'">'+(m.type==='in'?'Entrada':'Salida')+'</span><div><div class="name">'+esc(m.name)+'</div><div class="meta">'+esc(m.sku)+' · '+esc(when)+'</div></div><div class="qty">'+Number(m.qty||0)+'</div></div>';
+    }).join('') + '</div>';
+  }
+ 
+  // ---------- camera (scan tab) ----------
+  var camOn=false, html5Qrcode=null;
+  $('btnToggleCam').addEventListener('click', function(){ camOn?stopCam():startCam(); });
+  $('btnCloseCam').addEventListener('click', stopCam);
+  function startCam(){
+    if(typeof Html5Qrcode==='undefined'){ toast('No se pudo cargar el módulo de cámara'); return; }
+    if(labelCamOn) stopLabelCam();
+    $('camBox').classList.add('active'); $('btnToggleCam').textContent='📷 Ocultar cámara'; camOn=true;
+    html5Qrcode = new Html5Qrcode('camRegion', { formatsToSupport:[Html5QrcodeSupportedFormats.EAN_13,Html5QrcodeSupportedFormats.EAN_8,Html5QrcodeSupportedFormats.UPC_A,Html5QrcodeSupportedFormats.UPC_E,Html5QrcodeSupportedFormats.CODE_128,Html5QrcodeSupportedFormats.CODE_39,Html5QrcodeSupportedFormats.CODE_93,Html5QrcodeSupportedFormats.CODABAR,Html5QrcodeSupportedFormats.ITF,Html5QrcodeSupportedFormats.QR_CODE], verbose:false });
+    var lastCode='', lastAt=0;
+    html5Qrcode.start({facingMode:'environment'},{fps:10,qrbox:{width:240,height:160}}, function(txt){
+      var t=Date.now(); if(txt===lastCode && (t-lastAt)<1800) return; lastCode=txt; lastAt=t;
+      if(navigator.vibrate) try{navigator.vibrate(60);}catch(e){}
+      showScanResult(txt);
+    }, function(){}).catch(function(){ toast('No se pudo activar la cámara'); stopCam(); });
+  }
+  function stopCam(){
+    camOn=false; $('camBox').classList.remove('active'); $('btnToggleCam').textContent='📷 Activar cámara';
+    if(html5Qrcode){ html5Qrcode.stop().then(function(){html5Qrcode.clear();}).catch(function(){}); html5Qrcode=null; }
+  }
+ 
+  // ---------- labels ----------
+  var labelSelected = {}, labelSize='md', labelCopies=1, labelSlots=9, labelBarcodeReady=false, labelsAutoInited=false;
+  var labelCamOn=false, labelHtml5Qrcode=null;
+ 
+  function autoSelectAllLabelsIfNeeded(){
+    if(labelsAutoInited || !items.length) return;
+    items.forEach(function(it){ labelSelected[it.id]=true; });
+    labelSlots = items.length; $('labelSlots').value = items.length;
+    labelsAutoInited = true;
+  }
+ 
+  function setLabelMsg(kind, text){
+    var el = $('labelMsg');
+    if(!text){ el.classList.remove('show'); return; }
+    el.className = 'msg show ' + kind; el.textContent = text;
+  }
+ 
+  function renderLabelsView(){
+    var q = ($('labelSearch').value||'').trim().toLowerCase();
+    var list = items.filter(function(it){ if(!q) return true; return (it.name||'').toLowerCase().indexOf(q)>-1 || (it.sku||'').toLowerCase().indexOf(q)>-1 || (it.category||'').toLowerCase().indexOf(q)>-1; });
+    $('labelPickList').innerHTML = list.map(function(it){
+      var checked = labelSelected[it.id] ? 'checked' : '';
+      return '<label class="pick-row"><input type="checkbox" data-id="'+it.id+'" '+checked+'><span>'+esc(it.name)+'</span><span class="meta">'+esc(it.sku||'')+' · '+esc(it.category||'')+'</span></label>';
+    }).join('') || '<div style="padding:16px;text-align:center;color:var(--ink-soft);">Sin resultados</div>';
+    $('labelPickList').querySelectorAll('input[type=checkbox]').forEach(function(cb){
+      cb.addEventListener('change', function(){
+        if(cb.checked) labelSelected[cb.getAttribute('data-id')]=true; else delete labelSelected[cb.getAttribute('data-id')];
+        renderLabelGrid();
+      });
+    });
+    renderLabelGrid();
+  }
+  function renderLabelGrid(){
+    var ids = Object.keys(labelSelected).filter(function(k){ return labelSelected[k]; });
+    var byId = {}; items.forEach(function(it){ byId[it.id]=it; });
+    var chosen = ids.map(function(id){ return byId[id]; }).filter(Boolean);
+    var cols = labelSize==='sm'?4:labelSize==='lg'?2:3;
+    var filled = [];
+    chosen.forEach(function(it){ for(var i=0;i<labelCopies;i++) filled.push(it); });
+    var total = Math.max(labelSlots, filled.length);
+    var cells = [];
+    for(var s=0;s<total;s++){
+      var it = filled[s];
+      if(it) cells.push('<div class="label-cell"><div class="nm">'+esc(it.name)+'</div><svg class="bc" data-code="'+esc(it.sku||it.id)+'"></svg><div class="sk">'+esc(it.sku||'')+'</div><div class="loc">Ubicación: '+esc(it.category||'')+'</div></div>');
+      else cells.push('<div class="label-cell empty"></div>');
+    }
+    $('labelPrintGrid').innerHTML = '<div class="label-sheet cols-'+cols+'">'+cells.join('')+'</div>';
+    if(filled.length > labelSlots) setLabelMsg('warn', filled.length+' etiquetas para '+labelSlots+' huecos — se han añadido filas de más.');
+    else setLabelMsg();
+    if(labelBarcodeReady && window.JsBarcode){
+      document.querySelectorAll('#labelPrintGrid svg.bc').forEach(function(svg){
+        try{ window.JsBarcode(svg, svg.getAttribute('data-code'), {format:'CODE128',displayValue:false,margin:0,height:36}); }catch(e){}
+      });
+    }
+  }
+  var barcodeLibPromise=null;
+  function ensureBarcodeLib(){
+    if(window.JsBarcode) return Promise.resolve(true);
+    if(barcodeLibPromise) return barcodeLibPromise;
+    barcodeLibPromise = new Promise(function(resolve){
+      var check=setInterval(function(){ if(window.JsBarcode){clearInterval(check); resolve(true);} },100);
+      setTimeout(function(){ clearInterval(check); if(!window.JsBarcode){ barcodeLibPromise=null; resolve(false); } },8000);
+    });
+    return barcodeLibPromise;
+  }
+  async function ensureLabelsReady(){
+    if(labelBarcodeReady) return true;
+    var ok = await ensureBarcodeLib();
+    if(ok){ labelBarcodeReady=true; renderLabelGrid(); return true; }
+    setLabelMsg('warn', '❌ No se pudo cargar el generador de códigos de barras — revisa tu conexión a internet.');
+    return false;
+  }
+  $('labelSearch').addEventListener('input', renderLabelsView);
+  $('btnLabelSelAll').onclick = function(){
+    var q=($('labelSearch').value||'').trim().toLowerCase();
+    items.filter(function(it){ return !q || (it.name||'').toLowerCase().indexOf(q)>-1 || (it.sku||'').toLowerCase().indexOf(q)>-1; }).forEach(function(it){ labelSelected[it.id]=true; });
+    renderLabelsView();
+  };
+  $('btnLabelSelEverything').onclick = function(){
+    items.forEach(function(it){ labelSelected[it.id]=true; });
+    $('labelSlots').value = items.length; labelSlots = items.length;
+    renderLabelsView();
+  };
+  $('btnLabelSelNone').onclick = function(){ labelSelected={}; renderLabelsView(); };
+  $('labelQty').addEventListener('input', function(){ labelCopies=Math.max(1,Math.min(50,parseInt($('labelQty').value,10)||1)); renderLabelGrid(); });
+  $('labelSlots').addEventListener('input', function(){ labelSlots=Math.max(1,Math.min(200,parseInt($('labelSlots').value,10)||9)); renderLabelGrid(); });
+  [['btnSizeSm','sm'],['btnSizeMd','md'],['btnSizeLg','lg']].forEach(function(pair){
+    $(pair[0]).addEventListener('click', function(){
+      labelSize = pair[1];
+      ['btnSizeSm','btnSizeMd','btnSizeLg'].forEach(function(id){ $(id).classList.remove('active'); });
+      $(pair[0]).classList.add('active');
+      renderLabelGrid();
+    });
+  });
+  function inEmbeddedView(){ try{ return window.self !== window.top; }catch(e){ return true; } }
+  $('btnPrintLabels').addEventListener('click', function(){
+    var ids = Object.keys(labelSelected).filter(function(k){ return labelSelected[k]; });
+    if(!ids.length){ setLabelMsg('warn','⚠️ Selecciona al menos un artículo, o pulsa "Todo el almacén".'); return; }
+    var btn=$('btnPrintLabels'); btn.disabled=true; var old=btn.textContent; btn.textContent='Preparando…';
+    ensureLabelsReady().then(function(ok){
+      btn.disabled=false; btn.textContent=old;
+      if(!ok) return;
+      setTimeout(function(){ window.print(); }, 100);
+    });
+  });
+ 
+  // camera on labels tab
+  $('btnToggleLabelCam').addEventListener('click', function(){ labelCamOn?stopLabelCam():startLabelCam(); });
+  $('btnCloseLabelCam').addEventListener('click', stopLabelCam);
+  function startLabelCam(){
+    if(typeof Html5Qrcode==='undefined'){ setLabelMsg('warn','❌ No se pudo cargar el módulo de cámara.'); return; }
+    if(camOn) stopCam();
+    $('labelCamBox').classList.add('active'); $('btnToggleLabelCam').textContent='📷 Ocultar cámara'; labelCamOn=true;
+    labelHtml5Qrcode = new Html5Qrcode('labelCamRegion', { formatsToSupport:[Html5QrcodeSupportedFormats.EAN_13,Html5QrcodeSupportedFormats.EAN_8,Html5QrcodeSupportedFormats.UPC_A,Html5QrcodeSupportedFormats.UPC_E,Html5QrcodeSupportedFormats.CODE_128,Html5QrcodeSupportedFormats.CODE_39,Html5QrcodeSupportedFormats.CODE_93,Html5QrcodeSupportedFormats.CODABAR,Html5QrcodeSupportedFormats.ITF,Html5QrcodeSupportedFormats.QR_CODE], verbose:false });
+    var lastCode='', lastAt=0;
+    labelHtml5Qrcode.start({facingMode:'environment'},{fps:10,qrbox:{width:240,height:160}}, function(txt){
+      var t=Date.now(); if(txt===lastCode && (t-lastAt)<1800) return; lastCode=txt; lastAt=t;
+      var it = itemsBySku[String(txt).toLowerCase()];
+      if(it){
+        if(navigator.vibrate) try{navigator.vibrate(60);}catch(e){}
+        var already = !!labelSelected[it.id];
+        labelSelected[it.id]=true;
+        setLabelMsg('ok', already ? (it.name+' ya estaba en la lista.') : ('＋ '+it.name+' añadido.'));
+        renderLabelsView();
+      } else {
+        if(navigator.vibrate) try{navigator.vibrate([40,60,40]);}catch(e){}
+        setLabelMsg('warn', 'Sin artículo con ese código: '+txt);
+      }
+    }, function(){}).catch(function(){ setLabelMsg('warn','❌ No se pudo activar la cámara.'); stopLabelCam(); });
+  }
+  function stopLabelCam(){
+    labelCamOn=false; $('labelCamBox').classList.remove('active'); $('btnToggleLabelCam').textContent='📷 Activar cámara para añadir';
+    if(labelHtml5Qrcode){ labelHtml5Qrcode.stop().then(function(){labelHtml5Qrcode.clear();}).catch(function(){}); labelHtml5Qrcode=null; }
+  }
+</script>
+</body>
+</html>
+ 
